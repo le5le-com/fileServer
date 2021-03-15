@@ -1,0 +1,20 @@
+name: le5le-file-server
+version: 0.0.1
+cpu: 1
+port: 8201
+#jwt: IKJfd345shJhdf
+mongo:
+  address: 127.0.0.1:27017
+  database: le5leFileServer
+  #user: xxxx
+  #password: xxxx
+  maxConnections: 10
+  Timeout: 30
+  logLevel: 1
+  mechanism: SCRAM-SHA-1
+  debug: false
+log:
+  #filename: filename
+  maxSize: 300
+  maxBackups: 5
+  maxAge: 30
