@@ -200,7 +200,7 @@ func download(ctx iris.Context) string {
 	filename := "/" + ctx.Params().Get("path")
 	if filename == "" {
 		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON("")
+		ctx.ServeFile(CachePath+"/notFound.png", true)
 		return ""
 	}
 	fullpath := CachePath + filename
@@ -216,7 +216,7 @@ func download(ctx iris.Context) string {
 			Str("remoteAddr", ctx.RemoteAddr()).
 			Msgf("Error to read file: file=%s.", filename)
 		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON("")
+		ctx.ServeFile(CachePath+"/notFound.png", true)
 		return ""
 	}
 	if !fileInfo.Metadata.Public && fileInfo.Metadata.UserID != uid {
@@ -225,7 +225,7 @@ func download(ctx iris.Context) string {
 			Str("remoteAddr", ctx.RemoteAddr()).
 			Msgf("No auth to read file: file=%s, fileinfo=%v.", filename, fileInfo)
 		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON("")
+		ctx.ServeFile(CachePath+"/notFound.png", true)
 		return ""
 	}
 
@@ -234,7 +234,7 @@ func download(ctx iris.Context) string {
 		err := Get(filename, CachePath+"/"+uid)
 		if err != nil {
 			ctx.StatusCode(iris.StatusNotFound)
-			ctx.JSON("")
+			ctx.ServeFile(CachePath+"/notFound.png", true)
 			return ""
 		}
 	}
