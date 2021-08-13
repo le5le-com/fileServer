@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"image"
@@ -16,7 +17,10 @@ import (
 
 	"github.com/nfnt/resize"
 	"github.com/rs/zerolog/log"
-	"gopkg.in/mgo.v2/bson"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo/gridfs"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"fileServer/config"
 	"fileServer/db/mongo"
@@ -65,52 +69,41 @@ func IsExist(path string) bool {
 
 // GetUniqueName 获取一个唯一的文件名
 func GetUniqueName() string {
-	id := bson.NewObjectId()
+	id := primitive.NewObjectID()
 	newName := id.Hex()
 	return newName
 }
 
 // Put 存储文件到数据库
-func Put(name string, f interface{}, meta interface{}) (string, error) {
+func Put(name string, f interface{}, meta interface{}) error {
 	if f == nil {
 		log.Error().Str("func", "file.Put").Msg("文件指针为空.")
-		return "", errors.New(keys.ErrorFileInfo)
+		return errors.New(keys.ErrorFileInfo)
 	}
-	mongoSession := mongo.Session.Clone()
-	defer mongoSession.Close()
 
-	mongoFile, err := mongoSession.DB(config.App.Mongo.Database).GridFS(mongo.Files).Create(name)
+	bucketOptions := options.GridFSBucket().SetName(mongo.Files)
+	bucket, _ := gridfs.NewBucket(mongo.Client.Database(config.App.Mongo.Database), bucketOptions)
+	uploadOpts := options.GridFSUpload().SetMetadata(meta)
+	uploadStream, err := bucket.OpenUploadStream(name, uploadOpts)
 	if err != nil {
-		log.Error().Err(err).Str("func", "file.Put").Msg("Fail to create a file on mongo.")
-		return "", err
+		log.Error().Err(err).Msg("Fail to openUploadStream on mongo.")
+		return err
 	}
+	defer uploadStream.Close()
 
-	defer mongoFile.Close()
-	var fileID string
-
-	fid := mongoFile.Id()
-	switch v := fid.(type) {
-	case string:
-		fileID = v
-	case bson.ObjectId:
-		fileID = v.Hex()
-	}
-	if name == "" {
-		mongoFile.SetName(fileID)
-	}
-	mongoFile.SetMeta(meta)
 	switch data := f.(type) {
 	case []byte:
-		_, err = mongoFile.Write(data)
+		_, err = uploadStream.Write(data)
 	case io.Reader:
-		_, err = io.Copy(mongoFile, data)
+		_, err = io.Copy(uploadStream, data)
 	default:
 	}
+
 	if err != nil {
 		log.Error().Err(err).Str("func", "file.Put").Msg("Fail to write file on mongo.")
-		return "", err
 	}
-	return fileID, err
+
+	return err
 }
 
 // Info 从数据库读取文件基础信息
@@ -118,14 +111,20 @@ func Info(name string) (*FileInfo, error) {
 	if name == "" {
 		return nil, errors.New(keys.ErrorParam)
 	}
-	mongoSession := mongo.Session.Clone()
-	defer mongoSession.Close()
 
 	fileInfo := &FileInfo{}
-	err := mongoSession.DB(config.App.Mongo.Database).GridFS(mongo.Files).Find(bson.M{
-		"filename": name,
-	}).Select(bson.M{"filename": true, "metadata": true}).One(&fileInfo)
+	bucketOptions := options.GridFSBucket().SetName(mongo.Files)
+	bucket, _ := gridfs.NewBucket(mongo.Client.Database(config.App.Mongo.Database), bucketOptions)
+	downloadStream, err := bucket.OpenDownloadStreamByName(name)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		downloadStream.Close()
+	}()
 
+	fileInfo.Filename = name
+	err = bson.Unmarshal(downloadStream.GetFile().Metadata, &fileInfo.Metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -138,15 +137,16 @@ func Get(name, dir string) error {
 	if name == "" {
 		return errors.New(keys.ErrorParam)
 	}
-	mongoSession := mongo.Session.Clone()
-	defer mongoSession.Close()
-
-	file, err := mongoSession.DB(config.App.Mongo.Database).GridFS(mongo.Files).Open(name)
+	bucketOptions := options.GridFSBucket().SetName(mongo.Files)
+	bucket, _ := gridfs.NewBucket(mongo.Client.Database(config.App.Mongo.Database), bucketOptions)
+	downloadStream, err := bucket.OpenDownloadStreamByName(name)
 	if err != nil {
-		log.Error().Caller().Err(err).Str("func", "file.Get").Msgf("Fail to open from GridFS. Name=%s", name)
+		log.Error().Err(err).Str("func", "file.Get").Msg("Fail to get file on mongo.")
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		downloadStream.Close()
+	}()
 
 	fullname := dir + name
 	cachePath := path.Dir(fullname)
@@ -163,7 +163,7 @@ func Get(name, dir string) error {
 		return err
 	}
 	defer fw.Close()
-	_, err = io.Copy(fw, file)
+	_, err = io.Copy(fw, downloadStream)
 	return err
 }
 
@@ -172,25 +172,18 @@ func Del(name, dir, uid string) error {
 	if name == "" {
 		return errors.New(keys.ErrorParam)
 	}
-	mongoSession := mongo.Session.Clone()
-	defer mongoSession.Close()
 
-	var err error
-	type gfsDocID struct {
-		ID interface{} "_id"
+	bucketOptions := options.GridFSBucket().SetName(mongo.Files)
+	bucket, _ := gridfs.NewBucket(mongo.Client.Database(config.App.Mongo.Database), bucketOptions)
+	downloadStream, err := bucket.OpenDownloadStreamByName(name)
+	if err != nil {
+		return err
 	}
+	defer func() {
+		downloadStream.Close()
+	}()
 
-	gfs := mongoSession.DB(config.App.Mongo.Database).GridFS(mongo.Files)
-	iter := gfs.Files.Find(bson.M{"filename": name, "metadata.userId": uid}).Select(bson.M{"_id": 1}).Iter()
-	var doc gfsDocID
-	for iter.Next(&doc) {
-		if e := gfs.RemoveId(doc.ID); e != nil {
-			err = e
-		}
-	}
-	if err == nil && iter != nil {
-		err = iter.Close()
-	}
+	err = bucket.Delete(downloadStream.GetFile().ID)
 	if err != nil {
 		log.Error().Caller().Err(err).Str("func", "file.Del").Msgf("Fail to delete from GridFS. Name=%s", name)
 		return err
@@ -242,11 +235,12 @@ func ImageThumbnail(src string, w, h int) (string, error) {
 
 // PatchAttr 修改属性
 func PatchAttr(fullname string, data bson.M, uid string) (err error) {
-	mongoSession := mongo.Session.Clone()
-	defer mongoSession.Close()
+	coll := mongo.Client.Database(config.App.Mongo.Database).Collection("fs." + mongo.Files)
 
-	err = mongoSession.DB(config.App.Mongo.Database).GridFS(mongo.Files).Files.
-		Update(bson.M{"filename": fullname, "metadata.userId": uid}, bson.M{"$set": bson.M{"metadata": data}})
+	opts := options.Update().SetUpsert(true)
+	filter := bson.M{"filename": fullname, "metadata.userId": uid}
+	update := bson.M{"$set": bson.M{"metadata": data}}
+	_, err = coll.UpdateOne(context.TODO(), filter, update, opts)
 
 	if err != nil {
 		log.Error().Caller().Err(err).Str("func", "file.PatchAttr").Msgf("Fail to write mongo: data=%v", data)

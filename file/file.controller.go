@@ -10,7 +10,7 @@ import (
 
 	"github.com/kataras/iris/v12"
 	"github.com/rs/zerolog/log"
-	"gopkg.in/mgo.v2/bson"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 func init() {
@@ -181,7 +181,7 @@ func upload(ctx iris.Context, public bool) string {
 	}
 
 	tags := strings.Split(ctx.FormValue("tags"), ",")
-	_, err = Put(fullname, file, bson.M{
+	err = Put(fullname, file, bson.M{
 		"userId":   ctx.Values().GetString("uid"),
 		"username": ctx.Values().GetString("username"),
 		"tags":     tags,

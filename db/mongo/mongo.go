@@ -1,43 +1,39 @@
 package mongo
 
 import (
+	"context"
+	"fileServer/config"
 	"time"
 
 	"github.com/rs/zerolog/log"
-	mgo "gopkg.in/mgo.v2"
-
-	"fileServer/config"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// Session 全局mongo会话
-var Session *mgo.Session
+var Client *mongo.Client
 
 // Init 初始化mongo连接
 func Init() bool {
 	var err error
-	Session, err = mgo.DialWithInfo(&mgo.DialInfo{
-		Addrs:     []string{config.App.Mongo.Address},
-		Username:  config.App.Mongo.User,
-		Password:  config.App.Mongo.Password,
-		Database:  config.App.Mongo.Database,
-		Source:    config.App.Mongo.Database,
-		Mechanism: config.App.Mongo.Mechanism,
-		PoolLimit: config.App.Mongo.MaxConnections,
-		Timeout:   time.Duration(config.App.Mongo.Timeout) * time.Second,
-	})
-	if err == nil {
-		if config.App.Mongo.Debug {
-			mgo.SetDebug(true)
-		}
-		if config.App.Mongo.User != "" {
-			err = Session.DB(config.App.Mongo.Database).Login(config.App.Mongo.User, config.App.Mongo.Password)
-		}
-	}
 
-	if err == nil {
-		Session.SetMode(mgo.Monotonic, true)
-	} else {
-		log.Error().Err(err).Msg("Fail to connect mongo.")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	uri := "mongodb://"
+	if config.App.Mongo.User != "" {
+		uri = uri + config.App.Mongo.User + ":" + config.App.Mongo.Password + "@"
+	}
+	uri = uri + config.App.Mongo.Address + "/" + config.App.Mongo.Database + "?authMechanism=SCRAM-SHA-256"
+	clientOptions := options.Client().ApplyURI(uri).SetMaxPoolSize(uint64(config.App.Mongo.MaxConnections))
+	Client, err = mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		log.Error().Err(err).Msgf("Fail to connect mongo: %v", uri)
+		return false
+	}
+	// 检查连接
+	err = Client.Ping(context.TODO(), nil)
+	if err != nil {
+		log.Error().Err(err).Msgf("Ping mongo: %v", uri)
 		return false
 	}
 

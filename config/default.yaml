@@ -9,9 +9,9 @@ mongo:
   #user: xxxx
   #password: xxxx
   maxConnections: 10
-  Timeout: 30
+  Timeout: 10
   logLevel: 1
-  mechanism: SCRAM-SHA-1
+  mechanism: SCRAM-SHA-256
   debug: false
 log:
   #filename: filename

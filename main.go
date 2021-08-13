@@ -12,7 +12,6 @@ import (
 
 	"fileServer/config"
 	"fileServer/db"
-	"fileServer/db/mongo"
 	"fileServer/router"
 )
 
@@ -54,7 +53,6 @@ func main() {
 	if !db.Init() {
 		return
 	}
-	defer mongo.Session.Close()
 
 	// 监听路由
 	router.Listen()
