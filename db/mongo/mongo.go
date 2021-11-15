@@ -25,7 +25,7 @@ func Init() bool {
 	}
 	uri = uri + config.App.Mongo.Address + "/" + config.App.Mongo.Database
 	if config.App.Mongo.User != "" {
-		uri = uri + "?authMechanism=SCRAM-SHA-256"
+		uri = uri + "?authSource=admin&authMechanism="+config.App.Mongo.Mechanism
 	}
 	clientOptions := options.Client().ApplyURI(uri).SetMaxPoolSize(uint64(config.App.Mongo.MaxConnections))
 	Client, err = mongo.Connect(ctx, clientOptions)

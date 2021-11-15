@@ -12,6 +12,7 @@ mongo:
   Timeout: 10
   logLevel: 1
   mechanism: SCRAM-SHA-256
+  authSource: admin
   debug: false
 log:
   #filename: filename

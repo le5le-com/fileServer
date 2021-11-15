@@ -109,7 +109,10 @@ func getEnvConfig() {
 	if text != "" {
 		App.Mongo.Mechanism = text
 	}
-
+	text = os.Getenv("MONGO_AUTHSOURCE")
+	if text != "" {
+		App.Mongo.AuthSource = text
+	}
 	text = os.Getenv("MONGO_DEBUG")
 	if text == "true" {
 		App.Mongo.Debug = true
