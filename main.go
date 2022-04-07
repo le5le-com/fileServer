@@ -1,11 +1,11 @@
 package main
 
 import (
-	"flag"
 	"os"
 	"runtime"
 	"time"
 
+	"github.com/kardianos/service"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
@@ -16,14 +16,7 @@ import (
 )
 
 func main() {
-	debug := flag.Bool("debug", false, "Sets log level to debug.")
-	flag.Parse()
-
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	if *debug {
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	}
-
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339})
 
 	// 处理panic
@@ -49,6 +42,42 @@ func main() {
 	// 最大cpu使用核心数
 	runtime.GOMAXPROCS(config.App.CPU)
 
+	prg := &program{}
+	// 构建服务对象
+	s, err := service.New(prg, &service.Config{
+		Name:        "fileServer",
+		DisplayName: "le5le file service",
+		Description: "This is a file service maked by le5le.",
+	})
+	if err != nil {
+		log.Err(err).Msgf("Fail to new service\n")
+	}
+
+	if len(os.Args) == 2 {
+		// 有命令则执行
+		err = service.Control(s, os.Args[1])
+		if err != nil {
+			log.Err(err).Msgf("Fail to exec service cmd\n")
+		}
+	} else { //否则说明是方法启动了
+		err = s.Run()
+		if err != nil {
+			log.Err(err).Msgf("Fail to start service\n")
+		}
+	}
+}
+
+type program struct{}
+
+func (p *program) Start(s service.Service) error {
+	go p.run()
+	return nil
+}
+func (p *program) Stop(s service.Service) error {
+
+	return nil
+}
+func (p *program) run() {
 	// 数据库连接
 	if !db.Init() {
 		return
