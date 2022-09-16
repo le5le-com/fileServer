@@ -1,6 +1,7 @@
 package file
 
 import (
+	"errors"
 	"fileServer/utils"
 	"os"
 	"path"
@@ -42,22 +43,23 @@ func UploadFile(ctx iris.Context) {
 
 // DelFile 删除文件
 func DelFile(ctx iris.Context) {
+	ret := make(map[string]interface{})
+	defer ctx.JSON(ret)
+
 	filename := "/" + ctx.Params().Get("path")
 	log.Debug().Msg(filename)
 	if filename == "" {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.Text("")
+		ret["error"] = errors.New(keys.ErrorParam)
 		return
 	}
 
 	uid := ctx.Values().GetString("uid")
 	err := Del(filename, CachePath+"/"+uid, uid)
 	if err != nil {
-		ctx.JSON(bson.M{"error": keys.ErrorSave, "errorDetail": err.Error()})
+		ret["error"] =  err.Error()
 		return
 	}
 
-	ctx.Text("")
 }
 
 // UploadImage 上传图片
