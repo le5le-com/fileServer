@@ -3,6 +3,7 @@ package mongo
 import (
 	"context"
 	"fileServer/config"
+	"net/url"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -21,7 +22,7 @@ func Init() bool {
 
 	uri := "mongodb://"
 	if config.App.Mongo.User != "" {
-		uri = uri + config.App.Mongo.User + ":" + config.App.Mongo.Password + "@"
+		uri = uri + config.App.Mongo.User + ":" + url.QueryEscape(config.App.Mongo.Password) + "@"
 	}
 	uri = uri + config.App.Mongo.Address + "/" + config.App.Mongo.Database
 	if config.App.Mongo.User != "" {
@@ -31,6 +32,7 @@ func Init() bool {
 			uri = uri + "?authMechanism=" + config.App.Mongo.Mechanism
 		}
 	}
+
 	clientOptions := options.Client().ApplyURI(uri).SetMaxPoolSize(uint64(config.App.Mongo.MaxConnections))
 	Client, err = mongo.Connect(ctx, clientOptions)
 	if err != nil {
